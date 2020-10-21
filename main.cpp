@@ -6,6 +6,9 @@
 #define DEAD_CELL 0  // '.' in the input data
 #define NUM_GENERATIONS 250
 
+// Using this struct seems to be more performant than just passing
+//  a bool** around functions. However, also adding the neighbor_count
+//  made performance worse.
 struct World {
     World(int size_x, int size_y) : size_x(size_x), size_y(size_y) {
         data = new bool*[size_y];
@@ -154,14 +157,14 @@ int main() {
     
     world_file.close();
 
-    timing->stopSetup();
-    timing->startComputation();
-
     // In this separate array, we keep track of how many live neighbors
     //  a certain cell has. This is because immediately updating based
     //  on the number of neighbors would mess with later calculations
     //  of adjacent cells.
     int *neighbor_counts = new int[world.size_y * world.size_x];
+
+    timing->stopSetup();
+    timing->startComputation();
 
     // Do some generations
     for (int i = 0; i < NUM_GENERATIONS; i++) {
