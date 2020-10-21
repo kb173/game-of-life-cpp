@@ -4,6 +4,7 @@
 
 #define LIVE_CELL 1  // 'x' in the input data
 #define DEAD_CELL 0  // '.' in the input data
+#define NUM_GENERATIONS 250
 
 struct World {
     World(int size_x, int size_y) : size_x(size_x), size_y(size_y) {
@@ -163,7 +164,7 @@ int main() {
     int *neighbor_counts = new int[world.size_y * world.size_x];
 
     // Do some generations
-    for (int i = 0; i < 250; i++) {
+    for (int i = 0; i < NUM_GENERATIONS; i++) {
         generation(world, neighbor_counts);
     }
 
