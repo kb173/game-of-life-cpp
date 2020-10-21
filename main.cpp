@@ -7,15 +7,15 @@
 
 #include "Timing.h"
 
-#define LIVE_CELL 'x'
-#define DEAD_CELL '.'
+#define LIVE_CELL 1  // 'x' in the input data
+#define DEAD_CELL 0  // '.' in the input data
 
 struct World {
     World(int size_x, int size_y) : size_x(size_x), size_y(size_y) {
-        data = new char*[size_y];
+        data = new bool*[size_y];
 
         for (int y = 0; y < size_y; y++) {
-            data[y] = new char[size_x];
+            data[y] = new bool[size_x];
         }
     }
 
@@ -27,27 +27,37 @@ struct World {
         delete data;
     }
 
-    char **data;
+    bool **data;
+
+    // All following functions are just convenience shorthands.
+    // They are inlined so it doesn't make a difference in performance.
     
-    char get_value(int x, int y) {
-        // TODO: Way too much work to do all the time. Move this to special cases
-        if (x < 0) x += size_x;
-        if (y < 0) y += size_y;
-        if (x >= size_x) x -= size_x;
-        if (y >= size_y) y -= size_y;
+    inline bool get_value(int x, int y) {
         return data[y][x];
     }
 
-    void set_alive(int x, int y) {
+    inline void set_alive(int x, int y) {
         data[y][x] = LIVE_CELL;
     }
 
-    void set_dead(int x, int y) {
+    inline void set_dead(int x, int y) {
         data[y][x] = DEAD_CELL;
     }
 
-    void set(int x, int y, char val) {
+    inline void set(int x, int y, bool val) {
         data[y][x] = val;
+    }
+
+    inline int get_num_neighbors(int left, int right, int up, int down, int x, int y) {
+        return
+            get_value(left, down) +
+            get_value(x, down) +
+            get_value(right, down) +
+            get_value(left, y) +
+            get_value(right, y) +
+            get_value(left, up) +
+            get_value(x, up) +
+            get_value(right, up);
     }
 
     int size_x;
@@ -55,27 +65,37 @@ struct World {
 };
 
 void generation(World &world, int *neighbor_counts) {
+    // Shorthand to prevent always having to access via world
     int size_x = world.size_x;
+    int size_y = world.size_y;
 
-    // Set neighbor counts
-    for (int y = 0; y < world.size_y; y++) {
-        for (int x = 0; x < world.size_x; x++) {
-            // Get number of living neighbors
-            int neighbors = 0;
+    // Set the neighbor count array according to the world.
 
-            if (world.get_value(x - 1, y - 1) == LIVE_CELL) neighbors++;
-            if (world.get_value(x, y - 1) == LIVE_CELL) neighbors++;
-            if (world.get_value(x + 1, y - 1) == LIVE_CELL) neighbors++;
+    // We handle x == 0 and x == size_x - 1 separately in order to avoid all the constant if checks.
+    int loop_x = size_x - 1;
 
-            if (world.get_value(x - 1, y) == LIVE_CELL) neighbors++;
-            if (world.get_value(x + 1, y) == LIVE_CELL) neighbors++;
+    for (int y = 0; y < size_y; y++) {
+        // Wrap y
+        // This happens rarely enough that this if isn't a huge problem, and it would be tedious
+        //  to handle both this and x manually.
+        int up = y - 1;
+        int down = y + 1;
 
-            if (world.get_value(x - 1, y + 1) == LIVE_CELL) neighbors++;
-            if (world.get_value(x, y + 1) == LIVE_CELL) neighbors++;
-            if (world.get_value(x + 1, y + 1) == LIVE_CELL) neighbors++;
+        if (up < 0)
+            up += size_y;
+        else if (down >= size_y)
+            down -= size_y;
 
-            neighbor_counts[y * size_x + x] = neighbors;
+        // Handle x == 0
+        neighbor_counts[y * size_x + 0] = world.get_num_neighbors(loop_x, 1, up, down, 0, y);
+        
+        // Handle 'normal' x
+        for (int x = 1; x < loop_x; x++) {
+            neighbor_counts[y * size_x + x] = world.get_num_neighbors(x - 1, x + 1, up, down, x, y);
         }
+
+        // Handle x == loop_x (== size_x - 1, we're just re-using the variable
+        neighbor_counts[y * size_x + loop_x] = world.get_num_neighbors(loop_x - 1, 0, up, down, loop_x, y);
     }
 
     // Update cells accordingly
@@ -108,7 +128,7 @@ int main() {
     timing->startSetup();
 
     // Read in the start state
-    std::string file_begin = "random250";
+    std::string file_begin = "random10000";
 
     std::ifstream world_file;
     world_file.open(file_begin + "_in.gol");
@@ -129,7 +149,10 @@ int main() {
         getline(world_file, line);
 
         for (int x = 0; x < size_x; x++) {
-            world.set(x, y, line[x]);
+            // The chars '.' and 'x' are mapped to the booleans 0 and 1.
+            // This speeds up the calculation of the neighbors -- no if-checks
+            //  needed, just sum the values.
+            world.set(x, y, 1 ? line[x] == 'x' : 0);
         }
     }
     
@@ -138,6 +161,10 @@ int main() {
     timing->stopSetup();
     timing->startComputation();
 
+    // In this separate array, we keep track of how many live neighbors
+    //  a certain cell has. This is because immediately updating based
+    //  on the number of neighbors would mess with later calculations
+    //  of adjacent cells.
     int *neighbor_counts = new int[world.size_y * world.size_x];
 
     // Do some generations
@@ -159,7 +186,8 @@ int main() {
         getline(world_file, line);
 
         for (int x = 0; x < size_x; x++) {
-            line += world.get_value(x, y);
+            // Convert 1 and 0 to 'x' and '.' again
+            line += world.get_value(x, y) ? 'x' : '.';
         }
 
         result_file << line << '\n';
