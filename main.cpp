@@ -5,6 +5,8 @@
 #include <map>
 #include <algorithm>
 
+#include "Timing.h"
+
 #define LIVE_CELL 'x'
 #define DEAD_CELL '.'
 
@@ -28,6 +30,7 @@ struct World {
     char **data;
     
     char get_value(int x, int y) {
+        // TODO: Way too much work to do all the time. Move this to special cases
         if (x < 0) x += size_x;
         if (y < 0) y += size_y;
         if (x >= size_x) x -= size_x;
@@ -51,30 +54,27 @@ struct World {
     int size_y;
 };
 
-void generation(World &world) {
-    // Set neighbor counts
-    int **neighbor_counts = new int*[world.size_y];
-    for (int y = 0; y < world.size_y; y++) {
-        neighbor_counts[y] = new int[world.size_x];
-    }
+void generation(World &world, int *neighbor_counts) {
+    int size_x = world.size_x;
 
+    // Set neighbor counts
     for (int y = 0; y < world.size_y; y++) {
         for (int x = 0; x < world.size_x; x++) {
             // Get number of living neighbors
             int neighbors = 0;
 
-            for (int local_y = -1; local_y < 2; local_y++) {
-                for (int local_x = -1; local_x < 2; local_x++) {
-                    // Ignore self
-                    if (local_x == 0 && local_y == 0) continue;
+            if (world.get_value(x - 1, y - 1) == LIVE_CELL) neighbors++;
+            if (world.get_value(x, y - 1) == LIVE_CELL) neighbors++;
+            if (world.get_value(x + 1, y - 1) == LIVE_CELL) neighbors++;
 
-                    if (world.get_value(x + local_x, y + local_y) == LIVE_CELL) {
-                        neighbors++;
-                    }
-                }
-            }
+            if (world.get_value(x - 1, y) == LIVE_CELL) neighbors++;
+            if (world.get_value(x + 1, y) == LIVE_CELL) neighbors++;
 
-            neighbor_counts[y][x] = neighbors;
+            if (world.get_value(x - 1, y + 1) == LIVE_CELL) neighbors++;
+            if (world.get_value(x, y + 1) == LIVE_CELL) neighbors++;
+            if (world.get_value(x + 1, y + 1) == LIVE_CELL) neighbors++;
+
+            neighbor_counts[y * size_x + x] = neighbors;
         }
     }
 
@@ -82,7 +82,7 @@ void generation(World &world) {
     for (int y = 0; y < world.size_y; y++) {
         for (int x = 0; x < world.size_x; x++) {
             char this_cell = world.get_value(x, y);
-            int neighbors = neighbor_counts[y][x];
+            int neighbors = neighbor_counts[y * size_x + x];
 
             if (this_cell == DEAD_CELL) {
                 if (neighbors == 3) {
@@ -102,9 +102,16 @@ void generation(World &world) {
 }
 
 int main() {
+    Timing *timing = Timing::getInstance();
+
+    // Setup.
+    timing->startSetup();
+
     // Read in the start state
+    std::string file_begin = "random250";
+
     std::ifstream world_file;
-    world_file.open("random250_in.gol");
+    world_file.open(file_begin + "_in.gol");
 
     // Get x and y size
     std::string x_str, y_str;
@@ -128,14 +135,22 @@ int main() {
     
     world_file.close();
 
+    timing->stopSetup();
+    timing->startComputation();
+
+    int *neighbor_counts = new int[world.size_y * world.size_x];
+
     // Do some generations
     for (int i = 0; i < 250; i++) {
-        generation(world);
+        generation(world, neighbor_counts);
     }
+
+    timing->stopComputation();
+    timing->startFinalization();
 
     // Write the result
     std::ofstream result_file;
-    result_file.open("random250_out.gol");
+    result_file.open(file_begin + "_out.gol");
 
     result_file << size_x << "," << size_y << '\n';
     
@@ -151,6 +166,11 @@ int main() {
     }
 
     result_file.close();
+    delete neighbor_counts;
+
+    timing->stopFinalization();
+
+    timing->print();
 
     return 0;
 }
