@@ -1,9 +1,4 @@
-#include <iostream>
 #include <fstream>
-#include <climits>
-#include <vector>
-#include <map>
-#include <algorithm>
 
 #include "Timing.h"
 
