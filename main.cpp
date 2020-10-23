@@ -1,10 +1,10 @@
 #include <fstream>
+#include <iostream>
 
 #include "Timing.h"
 
 #define LIVE_CELL 1  // 'x' in the input data
 #define DEAD_CELL 0  // '.' in the input data
-#define NUM_GENERATIONS 250
 
 // Using this struct seems to be more performant than just passing
 //  a bool** around functions. However, also adding the neighbor_count
@@ -120,17 +120,57 @@ void generation(World &world, int *neighbor_counts) {
     }
 }
 
-int main() {
+void print_usage() {
+    std::cerr << "Usage: gol --load infile.gol --save outfile.gol --generations number [--measure]" << std::endl;
+}
+
+int main(int argc, char* argv[]) {
     Timing *timing = Timing::getInstance();
 
     // Setup.
     timing->startSetup();
 
-    // Read in the start state
-    std::string file_begin = "random10000";
+    // Parse command line arguments
+    std::string infile;
+    std::string outfile;
+    int num_generations = 0;
+    bool measure = false;
 
+    if (argc < 6) {
+        print_usage();
+        return 1;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--load") {
+            if (i + 1 < argc) {
+                infile = argv[i+1];
+            } else {
+                print_usage();
+                return 1;
+            }  
+        } else if (std::string(argv[i]) == "--save") {
+            if (i + 1 < argc) {
+                outfile = argv[i+1];
+            } else {
+                print_usage();
+                return 1;
+            }  
+        } else if (std::string(argv[i]) == "--generations") {
+            if (i + 1 < argc) {
+                num_generations = std::stoi(argv[i+1]);
+            } else {
+                print_usage();
+                return 1;
+            }  
+        } else if (std::string(argv[i]) == "--measure") {
+            measure = true;
+        }
+    }
+
+    // Read in the start state
     std::ifstream world_file;
-    world_file.open(file_begin + "_in.gol");
+    world_file.open(infile);
 
     // Get x and y size
     std::string x_str, y_str;
@@ -167,7 +207,7 @@ int main() {
     timing->startComputation();
 
     // Do some generations
-    for (int i = 0; i < NUM_GENERATIONS; i++) {
+    for (int i = 0; i < num_generations; i++) {
         generation(world, neighbor_counts);
     }
 
@@ -176,7 +216,7 @@ int main() {
 
     // Write the result
     std::ofstream result_file;
-    result_file.open(file_begin + "_out.gol");
+    result_file.open(outfile);
 
     result_file << size_x << "," << size_y << '\n';
     
@@ -197,7 +237,7 @@ int main() {
 
     timing->stopFinalization();
 
-    timing->print();
+    if (measure) timing->print();
 
     return 0;
 }
