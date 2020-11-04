@@ -237,7 +237,9 @@ int main(int argc, char* argv[]) {
 
     timing->stopFinalization();
 
-    if (measure) timing->print();
+    if (measure) {
+        std::cout << timing->getResults() << std::endl;
+    }
 
     return 0;
 }
