@@ -9,3 +9,9 @@ The input file must contain the number of columns and rows to expect. Live cells
 ...
 .x.
 ```
+
+## Build & Run
+
+Build with `make`.
+
+Run with `./gol --load infile.gol --save outfile.gol --generations 100`. Optionally, also print a time measurement to stdout with `--measure`.
