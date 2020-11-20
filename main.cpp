@@ -103,19 +103,7 @@ void generation(World &world, int *neighbor_counts) {
             char this_cell = world.get_value(x, y);
             int neighbors = neighbor_counts[y * size_x + x];
 
-            if (this_cell == DEAD_CELL) {
-                if (neighbors == 3) {
-                    // Any dead cell with exactly three living neighbors becomes a live cell.
-                    world.set_alive(x, y);
-                }
-            } else {
-                if (neighbors < 2 || neighbors > 3) {
-                    // Any live cell with two or three living neighbors lives.
-                    // Any live cell with fewer than two living neighbors dies.
-                    // Any live cell with more than three living neighbors dies.
-                    world.set_dead(x, y);
-                }
-            }
+            world.data[y][x] = (neighbors == 3) + this_cell * (neighbors == 2);
         }
     }
 }
