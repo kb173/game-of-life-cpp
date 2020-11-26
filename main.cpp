@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <fstream>
 #include <iostream>
 
@@ -5,6 +6,12 @@
 
 #define LIVE_CELL 1  // 'x' in the input data
 #define DEAD_CELL 0  // '.' in the input data
+
+enum Mode {
+    SEQ,
+    OMP,
+    OCL
+};
 
 // Using this struct seems to be more performant than just passing
 //  a bool** around functions. However, also adding the neighbor_count
@@ -63,7 +70,54 @@ struct World {
     int size_y;
 };
 
-void generation(World &world, int *neighbor_counts) {
+void generation_omp(World &world, int *neighbor_counts) {
+    // Shorthand to prevent always having to access via world
+    int size_x = world.size_x;
+    int size_y = world.size_y;
+
+    // Set the neighbor count array according to the world.
+
+    // We handle x == 0 and x == size_x - 1 separately in order to avoid all the constant if checks.
+    int loop_x = size_x - 1;
+
+    #pragma omp parallel for
+    for (int y = 0; y < size_y; y++) {
+        // Wrap y
+        // This happens rarely enough that this if isn't a huge problem, and it would be tedious
+        //  to handle both this and x manually.
+        int up = y - 1;
+        int down = y + 1;
+
+        if (up < 0)
+            up += size_y;
+        else if (down >= size_y)
+            down -= size_y;
+
+        // Handle x == 0
+        neighbor_counts[y * size_x + 0] = world.get_num_neighbors(loop_x, 1, up, down, 0, y);
+        
+        // Handle 'normal' x
+        for (int x = 1; x < loop_x; x++) {
+            neighbor_counts[y * size_x + x] = world.get_num_neighbors(x - 1, x + 1, up, down, x, y);
+        }
+
+        // Handle x == loop_x (== size_x - 1, we're just re-using the variable
+        neighbor_counts[y * size_x + loop_x] = world.get_num_neighbors(loop_x - 1, 0, up, down, loop_x, y);
+    }
+
+    // Update cells accordingly
+    #pragma omp parallel for
+    for (int y = 0; y < world.size_y; y++) {
+        for (int x = 0; x < world.size_x; x++) {
+            char this_cell = world.get_value(x, y);
+            int neighbors = neighbor_counts[y * size_x + x];
+
+            world.data[y][x] = (neighbors == 3) + this_cell * (neighbors == 2);
+        }
+    }
+}
+
+void generation_seq(World &world, int *neighbor_counts) {
     // Shorthand to prevent always having to access via world
     int size_x = world.size_x;
     int size_y = world.size_y;
@@ -109,7 +163,7 @@ void generation(World &world, int *neighbor_counts) {
 }
 
 void print_usage() {
-    std::cerr << "Usage: gol --load infile.gol --save outfile.gol --generations number [--measure]" << std::endl;
+    std::cerr << "Usage: gol --mode seq|omp|ocl [--threads number] [--device cpu|gpu] --load infile.gol --save outfile.gol --generations number [--measure]" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -121,14 +175,18 @@ int main(int argc, char* argv[]) {
     // Parse command line arguments
     std::string infile;
     std::string outfile;
+    Mode mode = Mode::SEQ;
+    bool use_gpu = false;
     int num_generations = 0;
+    int num_threads = 1;
     bool measure = false;
 
-    if (argc < 6) {
+    if (argc < 8) {
         print_usage();
         return 1;
     }
 
+    // Parse arguments
     for (int i = 1; i < argc; i++) {
         if (std::string(argv[i]) == "--load") {
             if (i + 1 < argc) {
@@ -143,7 +201,44 @@ int main(int argc, char* argv[]) {
             } else {
                 print_usage();
                 return 1;
-            }  
+            } 
+        } else if (std::string(argv[i]) == "--mode") {
+            if (i + 1 < argc) {
+                if (std::string(argv[i+1]) == "seq") {
+                    mode = Mode::SEQ;
+                } else if (std::string(argv[i+1]) == "omp") {
+                    mode = Mode::OMP;
+                } else if (std::string(argv[i+1]) == "ocl") {
+                    mode = Mode::OCL;
+                } else {
+                    print_usage();
+                    return 1;
+                }
+            } else {
+                print_usage();
+                return 1;
+            }
+        } else if (std::string(argv[i]) == "--threads") {
+            if (i + 1 < argc) {
+                num_threads = std::stoi(argv[i+1]);
+            } else {
+                print_usage();
+                return 1;
+            }
+        } else if (std::string(argv[i]) == "--device") {
+            if (i + 1 < argc) {
+                if (std::string(argv[i+1]) == "cpu") {
+                    use_gpu = false;
+                } else if (std::string(argv[i+1]) == "gpu") {
+                    use_gpu = true;
+                } else {
+                    print_usage();
+                    return 1;
+                }
+            } else {
+                print_usage();
+                return 1;
+            }
         } else if (std::string(argv[i]) == "--generations") {
             if (i + 1 < argc) {
                 num_generations = std::stoi(argv[i+1]);
@@ -154,6 +249,21 @@ int main(int argc, char* argv[]) {
         } else if (std::string(argv[i]) == "--measure") {
             measure = true;
         }
+    }
+
+    // TODO: Just for testing
+    if (use_gpu) {
+        std::cout << "Using GPU" << std::endl;
+    } else {
+        std::cout << "Using CPU" << std::endl;
+    }
+
+    if (mode == Mode::SEQ) {
+        std::cout << "Running classic sequential version" << std::endl;
+    } else if (mode == Mode::OMP) {
+        std::cout << "Running OpenMP version with " << num_threads << " threads" << std::endl;
+    } else if (mode == Mode::OCL) {
+        std::cout << "Running OpenCL version" << std::endl;
     }
 
     // Read in the start state
@@ -195,8 +305,14 @@ int main(int argc, char* argv[]) {
     timing->startComputation();
 
     // Do some generations
-    for (int i = 0; i < num_generations; i++) {
-        generation(world, neighbor_counts);
+    if (mode == Mode::SEQ) {
+        for (int i = 0; i < num_generations; i++) {
+            generation_seq(world, neighbor_counts);
+        }
+    } else if (mode == Mode::OMP) {
+        for (int i = 0; i < num_generations; i++) {
+            generation_omp(world, neighbor_counts);
+        }
     }
 
     timing->stopComputation();

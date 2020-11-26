@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Wall -O3
+CXXFLAGS = -fopenmp -Wall -O3
 
 gol: main.o Timing.o
 	$(CXX) $(CXXFLAGS) -o gol main.o Timing.o
